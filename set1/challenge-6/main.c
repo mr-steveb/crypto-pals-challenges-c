@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <float.h>
 #include <limits.h>
 #include <stdint.h>
@@ -5,139 +6,109 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char DECODING_TABLE[] = {
-    62, -1, -1, -1, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, -1,
-    -1, -1, -1, -1, -1, -1, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-    -1, -1, -1, -1, -1, -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
-    36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
+static const char *chars = "etaoin shrdlu";
 
-typedef struct {
-  size_t keySize;
-  float normalizedDistance;
-} KEYSIZE_RESULT;
-
-int compare_keysize_result(const void *a, const void *b) {
-  KEYSIZE_RESULT *resultA = (KEYSIZE_RESULT *)a;
-  KEYSIZE_RESULT *resultB = (KEYSIZE_RESULT *)b;
-  return (resultA->normalizedDistance > resultB->normalizedDistance) -
-         (resultA->normalizedDistance < resultB->normalizedDistance);
+int base64_char_to_val(char c) {
+  if (c >= 'A' && c <= 'Z')
+    return c - 'A';
+  if (c >= 'a' && c <= 'z')
+    return 26 + (c - 'a');
+  if (c >= '0' && c <= '9')
+    return 52 + (c - '0');
+  if (c == '+')
+    return 62;
+  if (c == '/')
+    return 63;
+  return -1;
 }
 
-// Function to decode a Base64 encoded string
-unsigned char *base64_decode(const char *data, size_t input_length,
-                             size_t *output_length) {
-  if (input_length % 4 != 0) {
-    fprintf(stderr, "Invalid Base64 length: must be multiple of 4\n");
-    return NULL;
+void base64_to_bin(const char *b64Str, uint8_t **blob, size_t length,
+                   size_t *blob_size) {
+  size_t index = 0;
+  size_t outputIndex = 0;
+  size_t padding = 0;
+
+  // Count padding characters
+  if (length >= 2) {
+    if (b64Str[length - 1] == '=')
+      padding++;
+    if (b64Str[length - 2] == '=')
+      padding++;
   }
 
-  *output_length = (input_length / 4) * 3;
-  if (data[input_length - 1] == '=')
-    (*output_length)--;
-  if (data[input_length - 2] == '=')
-    (*output_length)--;
+  // Calculate expected binary size
+  *blob_size = (length / 4) * 3 - padding;
 
-  unsigned char *decoded_data = (unsigned char *)malloc(*output_length);
-
-  if (decoded_data == NULL) {
-    fprintf(stderr, "Failed to allocate memory for decoded data\n");
-    return NULL;
+  // Allocate memory for binary data
+  *blob = (uint8_t *)malloc(*blob_size);
+  if (*blob == NULL) {
+    fprintf(stderr, "Unable to allocate memory for binary data.\n");
+    exit(1);
   }
 
-  for (int i = 0, j = 0; i < input_length;) {
-    uint32_t sextet_a = 0, sextet_b = 0, sextet_c = 0, sextet_d = 0;
+  uint32_t triple = 0;
+  int bits_collected = 0;
 
-    // Process first sextet
-    int idx_a = data[i] - 43;
-    if (data[i] == '=' || idx_a < 0 || idx_a >= sizeof(DECODING_TABLE) ||
-        DECODING_TABLE[idx_a] == -1) {
-      fprintf(stderr, "Invalid Base64 character: %c\n", data[i]);
-      free(decoded_data);
-      return NULL;
+  while (index < length && b64Str[index] != '=') {
+    int value = base64_char_to_val(b64Str[index++]);
+    if (value == -1)
+      continue; // Skip invalid characters
+
+    triple = (triple << 6) | value;
+    bits_collected += 6;
+
+    if (bits_collected >= 8) {
+      bits_collected -= 8;
+      (*blob)[outputIndex++] = (triple >> bits_collected) & 0xFF;
     }
-    sextet_a = DECODING_TABLE[idx_a];
-    ++i;
-
-    // Process second sextet
-    int idx_b = data[i] - 43;
-    if (data[i] == '=' || idx_b < 0 || idx_b >= sizeof(DECODING_TABLE) ||
-        DECODING_TABLE[idx_b] == -1) {
-      fprintf(stderr, "Invalid Base64 character: %c\n", data[i]);
-      free(decoded_data);
-      return NULL;
-    }
-    sextet_b = DECODING_TABLE[idx_b];
-    ++i;
-
-    // Process third sextet
-    int idx_c = data[i] - 43;
-    if (data[i] == '=' || idx_c < 0 || idx_c >= sizeof(DECODING_TABLE) ||
-        DECODING_TABLE[idx_c] == -1) {
-      if (data[i] != '=' || i + 1 != input_length ||
-          data[i + 1] != '=') { // Allow '=' only if it's padding at the end
-        fprintf(stderr, "Invalid Base64 character: %c\n", data[i]);
-        free(decoded_data);
-        return NULL;
-      }
-      sextet_c = 0; // Padding character '='
-    } else {
-      sextet_c = DECODING_TABLE[idx_c];
-    }
-    ++i;
-
-    // Process fourth sextet
-    int idx_d = data[i] - 43;
-    if (data[i] == '=' || idx_d < 0 || idx_d >= sizeof(DECODING_TABLE) ||
-        DECODING_TABLE[idx_d] == -1) {
-      if (data[i] != '=' ||
-          i != input_length -
-                   1) { // Allow '=' only if it's the very last character
-        fprintf(stderr, "Invalid Base64 character: %c\n", data[i]);
-        free(decoded_data);
-        return NULL;
-      }
-      sextet_d = 0; // Padding character '='
-    } else {
-      sextet_d = DECODING_TABLE[idx_d];
-    }
-    ++i;
-
-    // Combine the four sextets into three bytes
-    uint32_t triple =
-        (sextet_a << 18) + (sextet_b << 12) + (sextet_c << 6) + sextet_d;
-
-    if (j < *output_length)
-      decoded_data[j++] = (triple >> 16) & 0xFF;
-    if (j < *output_length && data[i - 2] != '=')
-      decoded_data[j++] = (triple >> 8) & 0xFF;
-    if (j < *output_length && data[i - 1] != '=')
-      decoded_data[j++] = triple & 0xFF;
   }
 
-  return decoded_data;
+  *blob_size =
+      outputIndex; // Adjust the size in case of any non-standard padding
 }
 
+// Efficient bit count using Brian Kernighan’s algorithm
 int bit_count(size_t u) {
-  size_t uCount;
-
-  uCount = u - ((u >> 1) & 033333333333) - ((u >> 2) & 011111111111);
-  return ((uCount + (uCount >> 3)) & 030707070707) % 63;
+  int count = 0;
+  while (u) {
+    u &= (u - 1);
+    count++;
+  }
+  return count;
 }
 
-size_t hamming_diff(unsigned char *str1, unsigned char *str2, size_t len) {
-
-  if (str1 == NULL || str2 == NULL) {
-    fprintf(stderr, "NULL pointer supplied to hamming_diff\n");
+// Calculate the Hamming distance between two chunks
+size_t hamming_dist(const unsigned char *chunk1, const unsigned char *chunk2,
+                    size_t len) {
+  if (chunk1 == NULL || chunk2 == NULL) {
+    fprintf(stderr, "NULL pointer supplied to hamming_dist\n");
     return 0;
   }
-  unsigned char diff;
-  size_t hDis = 0;
+  size_t hamming_dist = 0;
   for (size_t i = 0; i < len; i++) {
-    diff = str1[i] ^ str2[i];
-    hDis += bit_count(diff); // Count bits per byte immediately
+    hamming_dist += bit_count(chunk1[i] ^ chunk2[i]);
   }
-  return hDis;
+  return hamming_dist;
+}
+
+size_t find_best_key_size(unsigned char *data, size_t data_len) {
+  size_t best_size = 0;
+  size_t best_score = 1000000;
+  int key = 0;
+
+  for (key = 2; key <= 40; ++key) {
+    int i = 0;
+    size_t score = 0;
+    for (i = 0; i < 10; ++i) {
+      score += hamming_dist(&data[i * key], &data[(i + 1) * key], key);
+    }
+    score = score * 10000 / key;
+    if (score < best_score) {
+      best_score = score;
+      best_size = key;
+    }
+  }
+  return best_size;
 }
 
 char *load_file_into_memory(const char *filename, size_t *length) {
@@ -196,6 +167,54 @@ char *load_file_into_memory(const char *filename, size_t *length) {
   return data; // Return the file data
 }
 
+int char_score(char c) {
+
+  int score = 0;
+  c = tolower(c);
+
+  for (int i = strlen(chars) -1; i >= 0; --i) {
+    if (chars[i] == c) {
+      score = 12 - i;
+      break;
+    }
+  }
+  return score;
+}
+
+void ascertain_key(unsigned char *data, size_t data_len, unsigned char *key,
+                   size_t key_len) {
+
+  for (size_t i = 0; i < key_len; ++i) {
+    // xor byte against
+    unsigned char best_byte = 0;
+    int best_score = 0;
+    int byte = 0;
+    for (byte = 0; byte <= 255; byte++) {
+      size_t j = 0;
+      int score = 0;
+      for (j = i; j < data_len; j += key_len) {
+        score += char_score(data[j] ^ (unsigned char)byte);
+      }
+
+      if (score > best_score) {
+        best_score = score;
+        best_byte = byte;
+      }
+    }
+    key[i] = best_byte;
+  }
+}
+
+void repeating_key_decrypt(unsigned char *data, unsigned char *key,
+                           size_t data_len, size_t key_len) {
+
+  for (size_t i = 0, j = 0; i < data_len; ++i) {
+    printf("%c", data[i] ^ key[j]);
+    ++j;
+    j %= key_len;
+  }
+}
+
 int main(int argc, char *argv[]) {
 
   if (argc < 2) {
@@ -206,80 +225,33 @@ int main(int argc, char *argv[]) {
   size_t length = 0;
   size_t output_length = 0;
   char *eb64p = load_file_into_memory(argv[1], &length);
+  unsigned char *blob;
+  unsigned char *key;
+
   if (!eb64p) {
     fprintf(stderr, "Error loading file into memory.\n");
     return EXIT_FAILURE;
   }
 
-  unsigned char *db64p = base64_decode(eb64p, length, &output_length);
+  // unsigned char *blob = base64_decode(eb64p, length, &output_length);
+  base64_to_bin(eb64p, &blob, length, &output_length);
 
-  if (!db64p) {
+  if (!blob) {
     fprintf(stderr, "Base64 decoding failed.\n");
     free(eb64p); // Clean up previously allocated memory
     return EXIT_FAILURE;
   }
 
-  printf("file length: %lu\n", length);
-  printf("decoded length: %lu\n", output_length);
+  size_t best_key_length = find_best_key_size(blob, output_length);
 
-  int block_pairs = 4;        // Number of block pairs to average
-  KEYSIZE_RESULT results[40]; // Assuming the maximum KEYSIZE is 40
+  key = malloc(best_key_length);
 
-  for (int i = 0; i < 40; ++i) {
-    results[i].keySize = i + 2; // Adjust according to actual key size range
-    results[i].normalizedDistance =
-        FLT_MAX; // Use float.h to set initial high values
-  }
+  ascertain_key(blob, output_length, key, best_key_length);
 
-  for (size_t key_length = 2; key_length <= 40; ++key_length) {
-    float total_normalized_distance = 0;
-    int valid_pairs = 0;
-
-    for (int pair = 0;
-         pair < block_pairs && (pair + 1) * key_length * 2 <= output_length;
-         ++pair) {
-      unsigned char *buff1 = db64p + (2 * pair * key_length);
-      unsigned char *buff2 = buff1 + key_length;
-      if (buff2 + key_length >
-          db64p + output_length) { // Make sure buff2 does not go out of bounds
-        break;
-      }
-      size_t hDis = hamming_diff(buff1, buff2, key_length);
-      float normalized_hDis = (float)hDis / key_length;
-      total_normalized_distance += normalized_hDis;
-      valid_pairs++;
-    }
-
-    if (valid_pairs > 0) {
-      float average_normalized_distance =
-          total_normalized_distance / valid_pairs;
-      if (key_length <
-          40) { // Ensure we do not exceed the bounds of the results array
-        results[key_length].keySize = key_length;
-        results[key_length].normalizedDistance = average_normalized_distance;
-      }
-    }
-  }
-
-  qsort(results, 40, sizeof(KEYSIZE_RESULT), compare_keysize_result);
-
-  size_t best_key_length = results[0].keySize;
-
-  unsigned char **blocks;
-
-  size_t num_blocks =
-      output_length / best_key_length + (output_length % best_key_length != 0);
-  blocks = malloc(num_blocks * sizeof(unsigned char *));
-
-  for (size_t i = 0; i < num_blocks; ++i) {
-    blocks[i] = malloc(best_key_length * sizeof(unsigned char));
-    size_t block_size = (i * best_key_length + best_key_length <= output_length)
-                            ? best_key_length
-                            : output_length % best_key_length;
-    memcpy(blocks[i], db64p + i * best_key_length, block_size);
-  }
+  repeating_key_decrypt(blob, key, output_length, best_key_length);
 
   free(eb64p);
-  free(db64p);
+  free(blob);
+  free(key);
   return 0;
 }
