@@ -102,7 +102,7 @@ size_t find_best_key_size(unsigned char *data, size_t data_len) {
     for (i = 0; i < 10; ++i) {
       score += hamming_dist(&data[i * key], &data[(i + 1) * key], key);
     }
-    score = score * 10000 / key;
+    score = score * 100 / key;
     if (score < best_score) {
       best_score = score;
       best_size = key;
@@ -180,6 +180,7 @@ int char_score(char c) {
   }
   return score;
 }
+
 
 void ascertain_key(unsigned char *data, size_t data_len, unsigned char *key,
                    size_t key_len) {

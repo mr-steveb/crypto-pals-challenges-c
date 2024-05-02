@@ -16,7 +16,6 @@ int main(int argc, char *argv[]) {
     int score = 0;
     for (i = 0; i < strlen(encMsg); ++i) {
       char c = encMsg[i] ^ (unsigned char)key;
-      int points = 0;
       if (strchr("etaoin shrdlu", tolower(c)))
         ++score;
     }
