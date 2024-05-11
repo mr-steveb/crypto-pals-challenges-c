@@ -1,9 +1,3 @@
-#include <float.h>
-#include <openssl/aes.h>
-#include <openssl/conf.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,10 +24,10 @@ int hex_char_to_bin(char c) {
   }
 }
 
-void hex_str_to_bin(const char *hexStr, uint8_t *binData, size_t binSize) {
+void hex_str_to_bin(const char* hexStr, unsigned char* binData, size_t binSize) {
   for (size_t i = 0; i < binSize; i++) {
-    uint8_t highNibble = hex_char_to_bin(hexStr[2 * i]);
-    uint8_t lowNibble = hex_char_to_bin(hexStr[2 * i + 1]);
+    unsigned char highNibble = hex_char_to_bin(hexStr[2 * i]);
+    unsigned char lowNibble = hex_char_to_bin(hexStr[2 * i + 1]);
     if (highNibble >= 0 && lowNibble >= 0) {
       binData[i] = (highNibble << 4) | lowNibble;
     } else {
