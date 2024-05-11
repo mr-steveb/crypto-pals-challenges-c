@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const unsigned char key[] = "YELLOW SUBMARINE";
 
 typedef struct {
   char *content;
