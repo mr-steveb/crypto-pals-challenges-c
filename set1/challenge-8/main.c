@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 typedef struct {
   char *content;
   size_t length;
@@ -43,7 +42,6 @@ void hex_str_to_bin(const char *hexStr, uint8_t *binData, size_t binSize) {
     }
   }
 }
-
 
 FileContent *load_file_by_lines(const char *filename) {
 
@@ -112,9 +110,7 @@ void free_file_content(FileContent *fc) {
   free(fc);
 }
 
-
-
-int find_ecb_block(FileContent* fc) {
+int find_ecb_block(FileContent *fc) {
 
   int best_score = -1, best_line = -1;
 
@@ -122,19 +118,18 @@ int find_ecb_block(FileContent* fc) {
   size_t raw_hex_len;
 
   for (size_t i = 0; i < fc->count; ++i) {
-    
+
     int score = 0;
     raw_hex_len = fc->lines[i].length / 2;
-    raw_hex = (unsigned char*)malloc(raw_hex_len);
+    raw_hex = (unsigned char *)malloc(raw_hex_len);
 
     if (!raw_hex) {
       fprintf(stderr, "unable to allocate memory.\n");
       return -1;
     }
-    
 
     hex_str_to_bin(fc->lines[i].content, raw_hex, raw_hex_len);
-    
+
     for (size_t j = 0; j < raw_hex_len; j += 16) {
       for (size_t k = j + 16; k < raw_hex_len; k += 16)
         if (0 == memcmp(&raw_hex[j], &raw_hex[k], 16))
@@ -160,25 +155,24 @@ int main(int argc, char *argv[]) {
 
   size_t len = 0, out_buff_size = 0, out_len = 0;
   FileContent *fc = load_file_by_lines(argv[1]);
-  
+
   if (!fc) {
     fprintf(stderr, "Error loading file into memory.\n");
     return EXIT_FAILURE;
   }
 
-  // TODO: add loop here
   int best_line = find_ecb_block(fc);
 
-  printf("best block is no. %i\n",best_line);
-  
-  for (size_t i = 0; i<fc->lines[best_line].length; ++i) {
-    if (!(i&31) && i != 0) 
+  printf("best block is no. %i\n", best_line);
+
+  for (size_t i = 0; i < fc->lines[best_line].length; ++i) {
+    if (!(i & 31) && i != 0) // sorry :(
       printf("\n");
 
-    printf("%c",fc->lines[best_line].content[i]);
+    printf("%c", fc->lines[best_line].content[i]);
   }
   printf("\n");
   free_file_content(fc);
 
-  return 1;
+  return EXIT_SUCCESS;
 }
